@@ -1,44 +1,33 @@
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  
-  if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
     const { messages } = req.body;
-    const API_KEY = process.env.GEMINI_API_KEY;
-    
-    if (!API_KEY) return res.status(500).json({ error: 'API key tidak ditemukan' });
+    const lastMessage = messages[messages.length - 1].content;
 
-    const contents = [
-      { role: 'user', parts: [{ text: 'Kamu adalah Ganz AI, asisten AI cerdas dan ramah. Berbicara Bahasa Indonesia santai tapi informatif.' }] },
-      { role: 'model', parts: [{ text: 'Siap!' }] },
-      ...messages.map(m => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }]
-      }))
-    ];
-
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents, generationConfig: { maxOutputTokens: 1000, temperature: 0.7 } })
-      }
-    );
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'llama3-8b-8192',
+        messages: [
+          { role: 'system', content: 'Kamu adalah Ganz AI, asisten AI cerdas dan ramah. Berbicara Bahasa Indonesia santai tapi informatif.' },
+          ...messages
+        ],
+        max_tokens: 1000
+      })
+    });
 
     const data = await response.json();
+    const reply = data.choices?.[0]?.message?.content;
     
-    if (data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-      return res.json({ content: [{ text: data.candidates[0].content.parts[0].text }] });
-    }
-    
-    return res.status(500).json({ error: 'Gagal', detail: JSON.stringify(data) });
-    
+    if (reply) return res.json({ content: [{ text: reply }] });
+    return res.status(500).json({ error: 'Gagal', detail: data });
+
   } catch (e) {
-    return res.status(500).json({ error: 'Server error: ' + e.message });
+    return res.status(500).json({ error: e.message });
   }
 }
